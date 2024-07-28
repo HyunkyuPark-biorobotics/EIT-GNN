@@ -39,20 +39,17 @@ def get_dataset(args, transform = 'SSAMSE'):
     dataset = Dataset['dataset']
     dataset_input = torch.FloatTensor(dataset['/dataset/input_data'][()]).permute(1, 0)
     dataset_output_raw = torch.FloatTensor(dataset['/dataset/output_data'][()]).permute(1, 0)
-
     adj_mat_out = torch.FloatTensor(dataset['/dataset/adj_mat_out'][()])
     node_coord = torch.FloatTensor(dataset['/dataset/elem_ctr'][()]).permute(1, 0)
     volume_weight = torch.FloatTensor(dataset['/dataset/elem_vol'][()]).permute(1, 0)
 
     dataset_output = dataset_output_raw
 
-    # Boundary extraction, only neccessary for face
+    # Boundary extraction
     if args.mesh_type == 'face':
         bd_elem_info = np.loadtxt("./dataset/face_elems_boundary.csv", delimiter=",")
-
         dataset_output = dataset_output[:, bd_elem_info]
         dataset_output_raw = dataset_output_raw[:, bd_elem_info]
-
         adj_mat_out = adj_mat_out[bd_elem_info][:, bd_elem_info]
         node_coord = node_coord[bd_elem_info]
         volume_weight = volume_weight[bd_elem_info]
@@ -77,6 +74,7 @@ def get_dataset(args, transform = 'SSAMSE'):
     dataset_output_tst = dataset_output[(split_idx_val + 1):, :]
     dataset_output_tst_raw = dataset_output_raw[(split_idx_val + 1):, :]
 
+    print("Dataset processing done")
     del dataset_input, dataset_output, dataset_output_raw
 
     dataset_trn = EITGNNDataset(dataset_input_trn, dataset_output_trn)
@@ -95,17 +93,18 @@ def get_dataset(args, transform = 'SSAMSE'):
     if args.model_type == 'OGN_GCN':
         if args.mesh_type == 'face':
             recon_mat = torch.FloatTensor(np.loadtxt("recon_mat_face.csv", delimiter=",")).permute(1, 0)
+            recon_mat = recon_mat[:, bd_elem_info]
         elif args.mesh_type == 'square_grid':
             recon_mat = torch.FloatTensor(np.loadtxt("recon_mat_square_grid.csv", delimiter=",")).permute(1, 0)
         elif args.mesh_type == 'square_mesh':
             recon_mat = torch.FloatTensor(np.loadtxt("recon_mat_square_mesh.csv", delimiter=",")).permute(1, 0)
+            cfg['recon_mat'] = recon_mat
         elif args.mesh_type == 'curvilinear':
             recon_mat = torch.FloatTensor(np.loadtxt("recon_mat_curvilinear.csv", delimiter=",")).permute(1, 0)
+            cfg['recon_mat'] = recon_mat
         elif args.mesh_type == 'cylinder':
             recon_mat = torch.FloatTensor(np.loadtxt("recon_mat_cylinder.csv", delimiter=",")).permute(1, 0)
-
-        recon_mat = recon_mat[:, bd_elem_info]
-
+        cfg['recon_mat'] = recon_mat
 
     return dataset_trn, dataset_val, dataset_tst, dataset_tst_raw, cfg
 
@@ -124,7 +123,6 @@ class EITGNNDataset(Dataset):
         return len(self.input)
 
     def __getitem__(self, idx):
-
         return self.input[idx], self.output[idx]
 
 
@@ -139,7 +137,6 @@ class WeightedMSELoss(nn.Module):
         reg_error = (torch.matmul(input, self.lap_mat))**2
         loss_recon = torch.mean(torch.sum(squared_error * self.weights.t(), 1))
         loss_lap = torch.mean(torch.sum(reg_error * self.weights.t(), 1))
-
         return loss_recon, loss_lap
 
 
